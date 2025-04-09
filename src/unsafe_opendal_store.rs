@@ -97,13 +97,89 @@ impl ObjectStore for OpendalStore {
         })
     }
 
-    async fn get_opts(&self, _location: &Path, _options: GetOptions) -> Result<GetResult> {
-        Err(object_store::Error::NotSupported {
-            source: Box::new(opendal::Error::new(
-                opendal::ErrorKind::Unsupported,
-                "get_opts is not implemented so far",
-            )),
+    async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
+        let meta: Metadata = ForceSend::new(async {
+            let mut stat = self.inner.stat_with(location.as_ref());
+
+            if let Some(if_match) = &options.if_match {
+                stat = stat.if_match(&if_match)
+            }
+
+            if let Some(version) = &options.version {
+                stat = stat.version(&version)
+            }
+
+            if let Some(if_none_match) = &options.if_none_match {
+                stat = stat.if_none_match(&if_none_match)
+            }
+            stat.await
         })
+        .await
+        .map_err(|err| format_object_store_error(err, location.as_ref()))?;
+
+        let meta = ObjectMeta {
+            location: location.clone(),
+            last_modified: meta.last_modified().unwrap_or_default(),
+            size: meta.content_length() as usize,
+            e_tag: meta.etag().map(|x| x.to_string()),
+            version: meta.version().map(|x: &str| x.to_string()),
+        };
+
+        let r = ForceSend::new(async {
+            let mut op = self.inner.reader_with(location.as_ref());
+            if let Some(version) = &options.version {
+                op = op.version(&version)
+            }
+            op.await
+        })
+        .await
+        .map_err(|err| format_object_store_error(err, location.as_ref()))?;
+
+        if let Some(range) = &options.range {
+            match range {
+                object_store::GetRange::Bounded(bounded) => Ok(GetResult {
+                    payload: GetResultPayload::Stream(Box::pin(ForceSend::new(OpendalReader {
+                        inner: ForceSend::new(r.into_bytes_stream(0..meta.size as u64))
+                            .await
+                            .unwrap(),
+                    }))),
+                    range: bounded.clone(),
+                    meta,
+                    attributes: Attributes::default(),
+                }),
+                object_store::GetRange::Offset(offset) => Ok(GetResult {
+                    payload: GetResultPayload::Stream(Box::pin(ForceSend::new(OpendalReader {
+                        inner: ForceSend::new(r.into_bytes_stream(0..meta.size as u64))
+                            .await
+                            .unwrap(),
+                    }))),
+                    range: (offset.clone()..meta.size),
+                    meta,
+                    attributes: Attributes::default(),
+                }),
+                object_store::GetRange::Suffix(suffix) => Ok(GetResult {
+                    payload: GetResultPayload::Stream(Box::pin(ForceSend::new(OpendalReader {
+                        inner: ForceSend::new(r.into_bytes_stream(0..meta.size as u64))
+                            .await
+                            .unwrap(),
+                    }))),
+                    range: (0..suffix.clone()),
+                    meta,
+                    attributes: Attributes::default(),
+                }),
+            }
+        } else {
+            Ok(GetResult {
+                payload: GetResultPayload::Stream(Box::pin(ForceSend::new(OpendalReader {
+                    inner: ForceSend::new(r.into_bytes_stream(0..meta.size as u64))
+                        .await
+                        .unwrap(),
+                }))),
+                range: (0..meta.size),
+                meta,
+                attributes: Attributes::default(),
+            })
+        }
     }
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
