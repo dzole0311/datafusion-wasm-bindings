@@ -27,7 +27,7 @@ cargo install wasm-opt
 To build the WASM binary, run:
 
 ```bash
-wasm-pack build --target web
+wasm-pack build --target bundler
 ```
 
 This will generate a `pkg` directory containing the WASM binary and a JavaScript wrapper. You can use it as a npm package. The `--target web` specifies that the WASM binary is for web usage (inside browser), other options like `nodejs` or `deno` also exist if you want to use it in other environments.
