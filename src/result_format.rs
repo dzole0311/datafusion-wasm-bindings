@@ -25,6 +25,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 pub enum ResultFormat {
     Table,
     Json,
+    Ipc,
 }
 
 impl ResultFormat {
@@ -44,6 +45,9 @@ impl ResultFormat {
                 writer.finish()?;
 
                 Ok(String::from_utf8(writer.into_inner())?)
+            }
+            ResultFormat::Ipc => {
+                panic!("ResultFormat::Ipc is available through DataFusionContext::execute_ipc")
             }
         }
     }

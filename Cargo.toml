@@ -16,7 +16,12 @@ console_error_panic_hook = "0.1.7"
 datafusion = { version = "45", default-features = false, features = [
     "parquet",
 ] }
+js-sys = "0.3"
 parquet = "54"
+# Not used directly: forces the `no_asm` feature onto the transitive
+# zstd-sys dependency, whose x86-64 assembly cannot be compiled for
+# the wasm32-unknown-unknown target.
+zstd-sys = { version = "2", default-features = false, features = ["no_asm"] }
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4.40"
